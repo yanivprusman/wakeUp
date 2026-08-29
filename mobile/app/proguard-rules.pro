@@ -1,0 +1,1 @@
+# PT app proguard rules

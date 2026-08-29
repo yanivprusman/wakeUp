@@ -1,0 +1,21 @@
+*.iml
+.gradle
+/local.properties
+local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+**/build/
+.kotlin/
+*.apk
+*.aab
+
+# Local build config (baked into the APK)
+.env*
+
+# Bind-mounted from addnewfeature at create time
+feedback-lib/
+build-logic/

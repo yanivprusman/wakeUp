@@ -1,0 +1,7 @@
+{
+  "description": "Alarm clock that is louder and harder to dismiss than the stock one: alarm-stream audio with gain beyond max, escalation, vibration + flash, and a dismiss that requires proving you are awake.",
+  "icon": "AlarmClock",
+  "sharedLibs": [
+    "android-feedback-lib"
+  ]
+}
