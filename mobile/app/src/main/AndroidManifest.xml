@@ -4,6 +4,21 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- setAlarmClock is the only API that fires on time in Doze. USE_EXACT_ALARM is granted
+         at install to alarm-clock apps; SCHEDULE_EXACT_ALARM covers Android 12-12L, where it
+         is user-revocable (the app shows a banner and a Fix it button when it has been). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
+
     <application
         android:name=".WakeUpApp"
         android:allowBackup="true"
@@ -13,6 +28,7 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.App">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -22,5 +38,38 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The ringing screen. Its own task affinity and excludeFromRecents so that swiping
+             the app away in Recents can never take the alarm with it. -->
+        <activity
+            android:name=".ring.RingActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=".ring"
+            android:excludeFromRecents="true"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true"
+            android:theme="@style/Theme.App" />
+
+        <service
+            android:name=".alarm.AlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".alarm.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
