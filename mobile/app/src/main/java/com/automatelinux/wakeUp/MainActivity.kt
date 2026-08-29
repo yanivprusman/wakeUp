@@ -6,13 +6,14 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
 import androidx.core.content.ContextCompat
 import com.automatelinux.wakeUp.alarm.AlarmScheduler
 import com.automatelinux.wakeUp.alarm.Readiness
 import com.automatelinux.wakeUp.ui.AlarmListScreen
+import com.automatelinux.wakeUp.ui.WakeUpTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -21,7 +22,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is dark by design, so the system bars must be told to draw LIGHT icons.
+        // Left to itself enableEdgeToEdge picks by the device's day/night setting and drew a
+        // black clock on an indigo bar — invisible.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
 
         // The ringing alarm is a foreground service with a full-screen intent; without the
         // notification permission it has no notification to attach that intent to.
@@ -40,7 +47,7 @@ class MainActivity : ComponentActivity() {
         Readiness.scheduleBedtimeCheck(this)
 
         setContent {
-            MaterialTheme { AlarmListScreen() }
+            WakeUpTheme { AlarmListScreen() }
         }
     }
 }

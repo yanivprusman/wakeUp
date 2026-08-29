@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer (Android 13+): the same mark, flat, for the system to tint. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M54,46 L54,38"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M68.1,51.1 L73.3,45.0"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M39.9,51.1 L34.7,45.0"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M74.7,60.5 L82.2,57.7"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M33.3,60.5 L25.8,57.7"
+        android:strokeColor="#FFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M37,68 A17,17 0 0 1 71,68 Z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M26,68 L82,68"
+        android:strokeColor="#FFFFFF" android:strokeWidth="7" android:strokeLineCap="round" />
+</vector>

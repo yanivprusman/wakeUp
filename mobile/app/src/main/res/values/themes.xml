@@ -2,8 +2,11 @@
 <resources>
     <!-- Compose draws the UI; the Activity theme just needs to be a no-action-bar
          theme that doesn't require the appcompat/material XML libraries. -->
-    <style name="Theme.App" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.App" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- The window is painted before Compose runs. Without this the app flashes white on
+             every launch — at 04:40, straight into the eyes. -->
+        <item name="android:windowBackground">#130B27</item>
     </style>
 </resources>

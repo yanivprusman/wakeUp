@@ -1,5 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sunrise: a heavy half-disc on a horizon, with five rays.
+
+  The first version used three concentric arcs. At launcher size the horizon and the disc were
+  lost between them and the even bands read as a RAINBOW — the arcs were spaced like one and
+  the eye finished the job. Discrete rays cannot be read that way: they are separate marks at
+  separate angles, and the shape underneath them is unmistakably a sun coming up.
+
+  The rays still carry the escalation — they reach further than the disc is tall, so the mark
+  grows outward from a small warm centre, which is what the alarm does.
+
+  All of it sits inside the 66dp safe zone (x 24..85, y 36..71), so no launcher mask clips it.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF" android:pathData="M38,38 h32 a6,6 0 0 1 6,6 v20 a6,6 0 0 1 -6,6 h-32 a6,6 0 0 1 -6,-6 v-20 a6,6 0 0 1 6,-6 z" />
-    <path android:fillColor="#B2DFDB" android:pathData="M46,48 h16 v4 h-16 z M46,56 h16 v4 h-16 z" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- Rays, outermost first so the disc and horizon paint over their inner ends. -->
+    <path android:pathData="M54,46 L54,38"
+        android:strokeColor="#FFD98A" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M68.1,51.1 L73.3,45.0"
+        android:strokeColor="#FFD98A" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M39.9,51.1 L34.7,45.0"
+        android:strokeColor="#FFD98A" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M74.7,60.5 L82.2,57.7"
+        android:strokeColor="#FFC24D" android:strokeWidth="4.5" android:strokeLineCap="round" />
+    <path android:pathData="M33.3,60.5 L25.8,57.7"
+        android:strokeColor="#FFC24D" android:strokeWidth="4.5" android:strokeLineCap="round" />
+
+    <!-- The sun. -->
+    <path android:pathData="M37,68 A17,17 0 0 1 71,68 Z" android:fillColor="#FFC24D" />
+
+    <!-- Horizon, drawn last so it reads as the sun sitting ON it. -->
+    <path android:pathData="M26,68 L82,68"
+        android:strokeColor="#FFF6E3" android:strokeWidth="7" android:strokeLineCap="round" />
 </vector>

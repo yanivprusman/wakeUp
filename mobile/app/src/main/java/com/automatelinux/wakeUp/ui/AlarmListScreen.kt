@@ -1,6 +1,5 @@
 package com.automatelinux.wakeUp.ui
 
-import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -9,9 +8,9 @@ import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -21,8 +20,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +35,18 @@ private val DAY_NAMES = listOf(
     Calendar.SATURDAY to "Sa",
 )
 
+/** "in 6h 20m" — the only number that answers the question you actually have at bedtime. */
+private fun countdown(millisFromNow: Long): String {
+    val minutes = (millisFromNow / 60_000).coerceAtLeast(0)
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h >= 24 -> "in ${h / 24}d ${h % 24}h"
+        h > 0 -> "in ${h}h ${m}m"
+        else -> "in ${m}m"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlarmListScreen() {
@@ -42,6 +54,7 @@ fun AlarmListScreen() {
     var alarms by remember { mutableStateOf(AlarmStore.all(context)) }
     var problems by remember { mutableStateOf(Readiness.problems(context)) }
     var caching by remember { mutableStateOf(setOf<Int>()) }
+    var picking by remember { mutableStateOf(false) }
 
     fun refresh() {
         alarms = AlarmStore.all(context)
@@ -50,67 +63,46 @@ fun AlarmListScreen() {
 
     fun cacheVoice(alarm: Alarm) {
         caching = caching + alarm.id
-        VoiceCache.refresh(context, alarm) {
-            caching = caching - alarm.id
-            refresh()
-        }
+        VoiceCache.refresh(context, alarm) { caching = caching - alarm.id; refresh() }
     }
 
+    val next = alarms.filter { it.enabled }.minByOrNull { it.nextTrigger() }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text("wakeUp") }) },
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                pickTime(context) { h, m ->
-                    val alarm = Alarm(id = AlarmStore.nextId(context), hour = h, minute = m)
-                    AlarmStore.upsert(context, alarm)
-                    AlarmScheduler.schedule(context, alarm)
-                    // Get Claude's line onto the phone now, not at 06:00.
-                    cacheVoice(alarm)
-                    refresh()
-                }
-            }) { Icon(Icons.Filled.Add, contentDescription = "Add alarm") }
+            FloatingActionButton(
+                onClick = { picking = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) { Icon(Icons.Filled.Add, contentDescription = "Add alarm") }
         },
     ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+        LazyColumn(
+            Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 96.dp),
+        ) {
+            item { Header(next) }
+
             if (problems.isNotEmpty()) {
                 item {
-                    // Every one of these is a silent failure you would otherwise meet at 06:00.
-                    Card(
-                        Modifier.fillMaxWidth().padding(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Tomorrow is not safe", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            problems.forEach { p ->
-                                Spacer(Modifier.height(12.dp))
-                                Text(p.title, fontWeight = FontWeight.SemiBold)
-                                Text(p.detail, fontSize = 13.sp)
-                                p.fix?.let { fix ->
-                                    Spacer(Modifier.height(6.dp))
-                                    TextButton(onClick = {
-                                        if (fix == Fix.CACHE_VOICE) {
-                                            alarms.filter { it.enabled && it.voice }.forEach(::cacheVoice)
-                                        } else openFix(context, fix)
-                                    }) { Text("Fix this") }
-                                }
-                            }
-                        }
+                    ProblemsCard(problems) { fix ->
+                        if (fix == Fix.CACHE_VOICE) alarms.filter { it.enabled && it.voice }.forEach(::cacheVoice)
+                        else openFix(context, fix)
                     }
                 }
             }
 
             if (alarms.isEmpty()) {
                 item {
-                    Box(Modifier.fillMaxWidth().padding(64.dp), contentAlignment = Alignment.Center) {
-                        Text("No alarms yet", color = MaterialTheme.colorScheme.outline)
+                    Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                        Text("Nothing set", color = MaterialTheme.colorScheme.outline)
                     }
                 }
             }
 
             items(alarms, key = { it.id }) { alarm ->
-                AlarmRow(
+                AlarmCard(
                     alarm = alarm,
                     voiceState = VoiceCache.state(context, alarm.id),
                     caching = alarm.id in caching,
@@ -127,28 +119,97 @@ fun AlarmListScreen() {
                         refresh()
                     },
                     onToggleDay = { day ->
-                        val days = if (day in alarm.days) alarm.days - day else alarm.days + day
-                        val updated = alarm.copy(days = days)
+                        val updated = alarm.copy(days = if (day in alarm.days) alarm.days - day else alarm.days + day)
                         AlarmStore.upsert(context, updated)
                         if (updated.enabled) AlarmScheduler.schedule(context, updated)
                         refresh()
                     },
                     onChallenge = { c ->
-                        val updated = alarm.copy(challenge = c)
-                        AlarmStore.upsert(context, updated)
-                        refresh()
+                        AlarmStore.upsert(context, alarm.copy(challenge = c)); refresh()
                     },
                     onRecache = { cacheVoice(alarm) },
                     onTest = { AlarmService.test(context, alarm.id) },
                 )
-                HorizontalDivider()
+            }
+        }
+    }
+
+    if (picking) {
+        val now = Calendar.getInstance()
+        WakeTimeDialog(
+            initialHour = now.get(Calendar.HOUR_OF_DAY),
+            initialMinute = now.get(Calendar.MINUTE),
+            onDismiss = { picking = false },
+            onConfirm = { h, m ->
+                picking = false
+                val alarm = Alarm(id = AlarmStore.nextId(context), hour = h, minute = m)
+                AlarmStore.upsert(context, alarm)
+                AlarmScheduler.schedule(context, alarm)
+                cacheVoice(alarm)   // get Claude's line onto the phone now, not at 04:40
+                refresh()
+            },
+        )
+    }
+}
+
+@Composable
+private fun Header(next: Alarm?) {
+    Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 20.dp)) {
+        Text(
+            "wakeUp",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.outline,
+        )
+        Spacer(Modifier.height(10.dp))
+        if (next == null) {
+            Text("No alarm armed", fontSize = 30.sp, fontWeight = FontWeight.Light)
+        } else {
+            // The countdown is the headline, not the time: at bedtime the question is never
+            // "when is it set for", it is "how long have I got".
+            Text(
+                countdown(next.nextTrigger() - System.currentTimeMillis()),
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Light,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "%02d:%02d".format(next.hour, next.minute) + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProblemsCard(problems: List<Problem>, onFix: (Fix) -> Unit) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Text(
+                "Tomorrow is not safe",
+                fontWeight = FontWeight.Bold, fontSize = 17.sp,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            problems.forEach { p ->
+                Spacer(Modifier.height(14.dp))
+                Text(p.title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(p.detail, fontSize = 13.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                p.fix?.let { fix ->
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = { onFix(fix) }) { Text("Fix this") }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AlarmRow(
+private fun AlarmCard(
     alarm: Alarm,
     voiceState: VoiceCache.State,
     caching: Boolean,
@@ -159,82 +220,103 @@ private fun AlarmRow(
     onRecache: () -> Unit,
     onTest: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "%02d:%02d".format(alarm.hour, alarm.minute),
-                fontSize = 40.sp, fontWeight = FontWeight.Light, modifier = Modifier.weight(1f),
-            )
-            Switch(checked = alarm.enabled, onCheckedChange = onToggle)
-            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "Delete") }
-        }
-
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            DAY_NAMES.forEach { (day, name) ->
-                DayToggle(
-                    label = name,
-                    selected = day in alarm.days,
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        // A disabled alarm is still on the list, but it must never read as armed at a glance.
+        Column(Modifier.padding(20.dp).alpha(if (alarm.enabled) 1f else 0.45f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "%02d:%02d".format(alarm.hour, alarm.minute),
+                    fontSize = 52.sp,
+                    fontWeight = FontWeight.Light,
+                    color = if (alarm.enabled) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
-                    onClick = { onToggleDay(day) },
                 )
+                Switch(checked = alarm.enabled, onCheckedChange = onToggle)
             }
-        }
 
-        Spacer(Modifier.height(10.dp))
-        Text("To stop it", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Challenge.entries.forEach { c ->
-                FilterChip(
-                    selected = alarm.challenge == c,
-                    onClick = { onChallenge(c) },
-                    label = { Text(c.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                )
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                when {
-                    caching -> "Fetching Claude's line…"
-                    voiceState == VoiceCache.State.CACHED -> "Briefing ready on this phone"
-                    else -> "No briefing cached — tone only"
+                if (alarm.repeats) "Every week" else "Once",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                DAY_NAMES.forEach { (day, name) ->
+                    DayToggle(name, day in alarm.days, Modifier.weight(1f)) { onToggleDay(day) }
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            Text("To stop it", fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Challenge.entries.forEach { c ->
+                    ChallengePill(
+                        label = c.name.lowercase().replaceFirstChar { it.uppercase() },
+                        selected = alarm.challenge == c,
+                        modifier = Modifier.weight(1f),
+                    ) { onChallenge(c) }
+                }
+            }
+            Text(
+                when (alarm.challenge) {
+                    Challenge.NONE -> "One tap ends it — the move a sleeping hand makes best"
+                    Challenge.MATH -> "${alarm.requiredCorrect} sums, in a row"
+                    Challenge.SPEAK -> "Say it out loud, ${alarm.requiredCorrect}×"
+                    Challenge.SHAKE -> "Shake it hard, ${alarm.requiredCorrect}×"
                 },
                 fontSize = 12.sp,
-                color = if (voiceState == VoiceCache.State.CACHED || caching) MaterialTheme.colorScheme.outline
-                        else MaterialTheme.colorScheme.error,
-                modifier = Modifier.weight(1f),
+                color = if (alarm.challenge == Challenge.NONE) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 8.dp),
             )
-            IconButton(onClick = onRecache, enabled = !caching) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Re-fetch the briefing")
-            }
-            IconButton(onClick = onTest) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Ring it now")
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when {
+                        caching -> "Fetching Claude's line…"
+                        voiceState == VoiceCache.State.CACHED -> "Briefing on this phone"
+                        else -> "No briefing — tone only"
+                    },
+                    fontSize = 12.sp,
+                    color = if (voiceState == VoiceCache.State.CACHED || caching) MaterialTheme.colorScheme.outline
+                            else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onRecache, enabled = !caching) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Re-fetch the briefing")
+                }
+                IconButton(onClick = onTest) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Ring it now, for real")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                }
             }
         }
-
-        Text(
-            if (alarm.repeats) "Repeats weekly" else "Once, at the next %02d:%02d".format(alarm.hour, alarm.minute),
-            fontSize = 12.sp, color = MaterialTheme.colorScheme.outline,
-        )
     }
 }
 
 /**
  * One day of the week. A plain weighted box rather than a [FilterChip] because a chip sizes
  * itself to its content and there are seven of them: on any phone narrower than the row wants,
- * the last chip is squeezed until its label disappears. A weight is a promise the layout can
- * always keep.
+ * the last chip is squeezed until its label disappears — which is exactly how Saturday went
+ * missing. A weight is a promise the layout can always keep.
  */
 @Composable
 private fun DayToggle(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier
             .height(40.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(
                 if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.surfaceVariant,
@@ -243,9 +325,7 @@ private fun DayToggle(label: String, selected: Boolean, modifier: Modifier, onCl
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            label,
-            fontSize = 13.sp,
-            maxLines = 1,
+            label, fontSize = 13.sp, maxLines = 1,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = if (selected) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -253,12 +333,53 @@ private fun DayToggle(label: String, selected: Boolean, modifier: Modifier, onCl
     }
 }
 
-private fun pickTime(context: Context, onPicked: (Int, Int) -> Unit) {
-    val now = Calendar.getInstance()
-    TimePickerDialog(
-        context, { _, h, m -> onPicked(h, m) },
-        now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), true,
-    ).show()
+/** Same equal-weight rule as the days: four of these must always fit, on any phone. */
+@Composable
+private fun ChallengePill(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .height(42.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label, fontSize = 13.sp, maxLines = 1,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * The app's own time picker.
+ *
+ * The platform `TimePickerDialog` renders in the OS's holo-era green regardless of the app's
+ * theme — a teal clock face dropped into a night-indigo app, which is what it looked like.
+ * Material 3's [TimePicker] inherits the scheme above, so it belongs to this app.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WakeTimeDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit,
+) {
+    val state = rememberTimePickerState(initialHour = initialHour, initialMinute = initialMinute, is24Hour = true)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text("Wake me at") },
+        text = { TimePicker(state = state) },
+        confirmButton = { TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("Set") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 private fun openFix(context: Context, fix: Fix) {
