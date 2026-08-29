@@ -9,7 +9,19 @@ import java.util.Calendar
  * What you must do to make it stop. The whole point of this app: the stock alarm ends on a
  * swipe, which a half-asleep hand performs perfectly well. A challenge costs consciousness.
  */
-enum class Challenge { NONE, MATH }
+enum class Challenge {
+    /** Any tap stops it. Here so the app can be honest about what it is giving up. */
+    NONE,
+
+    /** Two-digit sum. Offline, instant, and impossible to do with your eyes shut. */
+    MATH,
+
+    /** Say the phrase out loud. Nothing wakes a person like having to form words. */
+    SPEAK,
+
+    /** Shake the phone hard, repeatedly. For mornings when speaking would wake someone else. */
+    SHAKE,
+}
 
 /**
  * One alarm.
@@ -26,10 +38,15 @@ data class Alarm(
     val enabled: Boolean = true,
     val label: String = "",
     val challenge: Challenge = Challenge.MATH,
-    val maxGainMb: Int = 2000,
-    val rampSeconds: Int = 45,
+    /**
+     * How many correct answers in a row before Stop unlocks. One is a coin flip you can win
+     * asleep; two means the first was not luck.
+     */
+    val requiredCorrect: Int = 2,
     val vibrate: Boolean = true,
     val flash: Boolean = true,
+    /** Play Claude's cached briefing over the tone. See [VoiceCache]. */
+    val voice: Boolean = true,
 ) {
     val repeats: Boolean get() = days.isNotEmpty()
 
@@ -58,8 +75,8 @@ data class Alarm(
         put("id", id); put("hour", hour); put("minute", minute)
         put("days", JSONArray().also { a -> days.forEach { a.put(it) } })
         put("enabled", enabled); put("label", label)
-        put("challenge", challenge.name); put("maxGainMb", maxGainMb)
-        put("rampSeconds", rampSeconds); put("vibrate", vibrate); put("flash", flash)
+        put("challenge", challenge.name); put("requiredCorrect", requiredCorrect)
+        put("vibrate", vibrate); put("flash", flash); put("voice", voice)
     }
 
     companion object {
@@ -75,10 +92,10 @@ data class Alarm(
                 label = o.optString("label", ""),
                 challenge = runCatching { Challenge.valueOf(o.optString("challenge", "MATH")) }
                     .getOrDefault(Challenge.MATH),
-                maxGainMb = o.optInt("maxGainMb", 2000),
-                rampSeconds = o.optInt("rampSeconds", 45),
+                requiredCorrect = o.optInt("requiredCorrect", 2),
                 vibrate = o.optBoolean("vibrate", true),
                 flash = o.optBoolean("flash", true),
+                voice = o.optBoolean("voice", true),
             )
         }
     }

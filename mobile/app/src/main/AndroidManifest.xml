@@ -18,6 +18,16 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
+    <!-- The SPEAK challenge listens on-device for the wake phrase. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Android 11+ package visibility: without this the speech recogniser is invisible to us
+         and isRecognitionAvailable() answers false on a phone that has one. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".WakeUpApp"
@@ -59,6 +69,10 @@
 
         <receiver
             android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".alarm.BedtimeReceiver"
             android:exported="false" />
 
         <receiver

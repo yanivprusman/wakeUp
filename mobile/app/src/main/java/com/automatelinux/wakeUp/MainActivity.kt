@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.core.content.ContextCompat
 import com.automatelinux.wakeUp.alarm.AlarmScheduler
+import com.automatelinux.wakeUp.alarm.Readiness
 import com.automatelinux.wakeUp.ui.AlarmListScreen
 
 class MainActivity : ComponentActivity() {
@@ -34,6 +35,9 @@ class MainActivity : ComponentActivity() {
         // Anything could have moved while we were away: a reboot, a clock change, an OS that
         // dropped our alarms. Re-arm from the store on every launch.
         AlarmScheduler.rescheduleAll(this)
+
+        // Ask every night, while there is still a night in which to fix whatever is wrong.
+        Readiness.scheduleBedtimeCheck(this)
 
         setContent {
             MaterialTheme { AlarmListScreen() }
