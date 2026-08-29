@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.automatelinux.wakeUp.alarm.*
+import kotlinx.coroutines.delay
 import java.util.Calendar
 
 private val DAY_NAMES = listOf(
@@ -154,31 +155,84 @@ fun AlarmListScreen() {
 
 @Composable
 private fun Header(next: Alarm?) {
+    // Sheep mode: the same wait, counted in seconds. One sheep a second is the old trick for
+    // getting to sleep, and it is also exactly the number the question asks for — so the joke
+    // and the answer are the same figure. It ticks live, because a frozen count is a lie
+    // within a second and because watching it fall is the point.
+    var sheep by remember { mutableStateOf(false) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(sheep) {
+        while (sheep) {
+            now = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+
     Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 20.dp)) {
-        Text(
-            "wakeUp",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.outline,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "wakeUp",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.weight(1f),
+            )
+            if (next != null) SheepButton(active = sheep) { sheep = !sheep }
+        }
         Spacer(Modifier.height(10.dp))
+
         if (next == null) {
             Text("No alarm armed", fontSize = 30.sp, fontWeight = FontWeight.Light)
         } else {
-            // The countdown is the headline, not the time: at bedtime the question is never
-            // "when is it set for", it is "how long have I got".
-            Text(
-                countdown(next.nextTrigger() - System.currentTimeMillis()),
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Light,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                "%02d:%02d".format(next.hour, next.minute) + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
-                fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val remaining = (next.nextTrigger() - now).coerceAtLeast(0L)
+            if (sheep) {
+                val seconds = remaining / 1000
+                Text(
+                    "%,d".format(seconds),
+                    fontSize = 46.sp,
+                    fontWeight = FontWeight.Light,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    "sheep, one a second, until %02d:%02d".format(next.hour, next.minute),
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                // The countdown is the headline, not the time: at bedtime the question is never
+                // "when is it set for", it is "how long have I got".
+                Text(
+                    countdown(remaining),
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Light,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    "%02d:%02d".format(next.hour, next.minute) + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
+    }
+}
+
+/** Tap the sheep to count the wait in seconds instead of hours. Tap it again to stop. */
+@Composable
+private fun SheepButton(active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(46.dp)
+            .clip(RoundedCornerShape(23.dp))
+            .background(
+                if (active) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("\uD83D\uDC11", fontSize = 22.sp)
     }
 }
 
