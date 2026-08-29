@@ -107,8 +107,7 @@ class RingActivity : ComponentActivity() {
 private fun RingScreen(alarm: Alarm?, onDismiss: () -> Unit, onSnooze: () -> Unit) {
     BackHandler(enabled = true) {}
 
-    val preview = AlarmService.previewing
-    val challenge = if (preview) Challenge.NONE else (alarm?.challenge ?: Challenge.NONE)
+    val challenge = alarm?.challenge ?: Challenge.NONE
     val needed = alarm?.requiredCorrect ?: 1
     var passed by remember { mutableIntStateOf(0) }
     val solved = challenge == Challenge.NONE || passed >= needed
@@ -119,13 +118,6 @@ private fun RingScreen(alarm: Alarm?, onDismiss: () -> Unit, onSnooze: () -> Uni
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            if (preview) {
-                Text(
-                    "PREVIEW — stops itself in 20s",
-                    fontSize = 13.sp, color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.height(10.dp))
-            }
             Text(
                 alarm?.label?.ifBlank { null } ?: "Wake up",
                 fontSize = 34.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,

@@ -43,7 +43,6 @@ class AlarmService : Service() {
                 val id = intent.getIntExtra(AlarmReceiver.EXTRA_ID, -1)
                 val alarm = AlarmStore.get(this, id)
                 if (alarm == null) { Log.e(TAG, "alarm $id fired but is not in the store"); stopSelf(); return START_NOT_STICKY }
-                previewing = intent.getBooleanExtra(EXTRA_PREVIEW, false)
                 ring(alarm)
             }
             ACTION_STOP -> { stopEverything(); stopSelf() }
@@ -66,10 +65,6 @@ class AlarmService : Service() {
             ?.apply { setReferenceCounted(false); acquire(RING_TIMEOUT_MS) }
 
         startedAt = System.currentTimeMillis()
-        // A preview stops itself. Testing an alarm should not mean filling the room until you
-        // can prove you are awake — the point is to hear what it does, not to be subjected
-        // to it, and a test you have to fight is a test you stop running.
-        if (previewing) handler.postDelayed({ AlarmService.stop(this) }, PREVIEW_MS)
         val first = Escalation.DEFAULT.first()
         stage = first
         audio = AlarmAudio(this).also { a ->
@@ -90,9 +85,7 @@ class AlarmService : Service() {
         timeline = object : Runnable {
             override fun run() {
                 val elapsed = (System.currentTimeMillis() - startedAt) / 1000
-                // A preview never climbs: it shows you the voice and the first rung, and that
-                // is all anyone should have to inflict on a room at 22:00 to check a setting.
-                val want = if (previewing) Escalation.DEFAULT.first() else Escalation.stageAt(elapsed)
+                val want = Escalation.stageAt(elapsed)
                 if (want != stage) {
                     stage = want
                     audio?.applyStage(want)
@@ -134,7 +127,6 @@ class AlarmService : Service() {
     private fun stopEverything() {
         timeline?.let { handler.removeCallbacks(it) }; timeline = null
         stage = null
-        previewing = false
         audio?.stop(); audio = null
         buzzer?.stop(); buzzer = null
         flasher?.stop(); flasher = null
@@ -199,34 +191,24 @@ class AlarmService : Service() {
         private const val RING_TIMEOUT_MS = 30 * 60 * 1000L
         private const val SNOOZE_MS = 5 * 60 * 1000L
         private const val VOICE_REPEAT_S = 45L
-        private const val PREVIEW_MS = 20_000L
-        const val EXTRA_PREVIEW = "preview"
 
-        /**
-         * True while this ring is a preview. [com.automatelinux.wakeUp.ring.RingActivity] reads
-         * it to leave Stop enabled — a challenge exists to stop you dismissing a real alarm in
-         * your sleep, and at 22:00 in a shared room it is only in the way.
-         */
-        @Volatile var previewing = false
-            private set
 
         /** Which alarm is ringing, for [RingActivity] launched by the full-screen intent. */
         @Volatile var currentAlarmId: Int? = null
             private set
 
         /**
-         * Ring right now, for this alarm, exactly as it would at its real time.
+         * Ring right now, for this alarm, exactly as it would at its real time — the full
+         * ladder, the real challenge, no time limit.
          *
-         * An alarm you have never heard is an alarm you are trusting on faith — you cannot
-         * know whether it is loud enough, whether the challenge is too hard at 06:00, or
-         * whether this phone's flash and vibration behave. Preview is not a debug affordance;
-         * it is how you find out before the morning that depends on it.
+         * A test that is gentler than the thing it tests answers the wrong question. You need
+         * to know whether THIS is loud enough and whether you can pass the challenge when it
+         * matters, and a capped preview tells you neither.
          */
         fun test(context: Context, id: Int) {
             val i = Intent(context, AlarmService::class.java).apply {
                 action = ACTION_START
                 putExtra(AlarmReceiver.EXTRA_ID, id)
-                putExtra(EXTRA_PREVIEW, true)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i)
             else context.startService(i)
