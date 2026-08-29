@@ -157,13 +157,18 @@ fun AlarmListScreen() {
 private fun Header(next: Alarm?) {
     // Sheep mode: the same wait, counted in seconds. One sheep a second is the old trick for
     // getting to sleep, and it is also exactly the number the question asks for — so the joke
-    // and the answer are the same figure. It ticks live, because a frozen count is a lie
-    // within a second and because watching it fall is the point.
+    // and the answer are the same figure.
     var sheep by remember { mutableStateOf(false) }
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    LaunchedEffect(sheep) {
-        while (sheep) {
+    // The clock ticks ALWAYS, not only in sheep mode. It was keyed on `sheep`, which meant the
+    // ordinary "in 4h 38m" was frozen at whatever the time was when the screen was first
+    // composed: leave the app open, or come back to it, and it kept reporting a wait that had
+    // already shrunk. A countdown that does not count is not a countdown, and on this screen
+    // it is the one number the whole app is for. One recomposition a second, and it stops on
+    // its own when the header leaves composition.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
             now = System.currentTimeMillis()
             delay(1000)
         }
