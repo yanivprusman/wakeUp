@@ -88,6 +88,29 @@ fun AlarmListScreen() {
         VoiceCache.refresh(context, alarm) { caching = caching - alarm.id; refresh() }
     }
 
+    /**
+     * Every edit that moves WHEN an alarm next rings goes through here — one door, so the next
+     * one added cannot quietly skip the second half.
+     *
+     * The briefing says the day and the time out loud, so a cached WAV belongs to exactly one
+     * morning. Re-arm and re-render together, or the phone announces a morning that is not
+     * coming. The two conditions are not the same question: a fire time that MOVED needs a new
+     * recording, and so does an alarm switched back ON, whose recording may have been made for
+     * a morning that has already been and gone. Everything else keeps what it has, because a
+     * Kokoro pass costs seconds and toggling a distant day usually moves nothing.
+     */
+    fun rearm(old: Alarm, new: Alarm) {
+        AlarmStore.upsert(context, new)
+        AlarmScheduler.schedule(context, new)   // schedule() cancels by itself when it is off
+        if (new.enabled && new.voice && (!old.enabled || new.nextTrigger() != old.nextTrigger())) {
+            // Cleared before fetching: a failed render must leave "no briefing", which the card
+            // and the bedtime check both say out loud — never the briefing for another morning.
+            VoiceCache.clear(context, new.id)
+            cacheVoice(new)
+        }
+        refresh()
+    }
+
     val next = alarms.filter { it.enabled }.minByOrNull { it.nextTrigger() }
 
     Scaffold(
@@ -132,12 +155,7 @@ fun AlarmListScreen() {
                     alarm = alarm,
                     voiceState = VoiceCache.state(context, alarm.id),
                     caching = alarm.id in caching,
-                    onToggle = { on ->
-                        val updated = alarm.copy(enabled = on)
-                        AlarmStore.upsert(context, updated)
-                        if (on) AlarmScheduler.schedule(context, updated) else AlarmScheduler.cancel(context, updated)
-                        refresh()
-                    },
+                    onToggle = { on -> rearm(alarm, alarm.copy(enabled = on)) },
                     onDelete = {
                         AlarmScheduler.cancel(context, alarm)
                         VoiceCache.clear(context, alarm.id)
@@ -145,10 +163,9 @@ fun AlarmListScreen() {
                         refresh()
                     },
                     onToggleDay = { day ->
-                        val updated = alarm.copy(days = if (day in alarm.days) alarm.days - day else alarm.days + day)
-                        AlarmStore.upsert(context, updated)
-                        if (updated.enabled) AlarmScheduler.schedule(context, updated)
-                        refresh()
+                        rearm(alarm, alarm.copy(
+                            days = if (day in alarm.days) alarm.days - day else alarm.days + day,
+                        ))
                     },
                     onChallenge = { c ->
                         AlarmStore.upsert(context, alarm.copy(challenge = c)); refresh()
@@ -199,16 +216,10 @@ fun AlarmListScreen() {
                     cacheVoice(alarm)   // get Claude's line onto the phone now, not at 04:40
                     refresh()
                 } else {
-                    val updated = existing.copy(hour = h, minute = m)
-                    AlarmStore.upsert(context, updated)
                     // No cancel first: the PendingIntent is keyed on the id, so setAlarmClock
                     // replaces the old time outright — and schedule() cancels by itself when
                     // the alarm is off, which is the case a separate cancel would get wrong.
-                    AlarmScheduler.schedule(context, updated)
-                    // The briefing is NOT re-fetched: it never mentions the alarm's time, only
-                    // the name. Re-rendering here would spend a Kokoro pass to produce the
-                    // identical WAV.
-                    refresh()
+                    rearm(existing, existing.copy(hour = h, minute = m))
                 }
             },
         )

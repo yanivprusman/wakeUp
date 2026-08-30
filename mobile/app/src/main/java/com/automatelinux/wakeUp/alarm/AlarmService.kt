@@ -45,7 +45,13 @@ class AlarmService : Service() {
                 if (alarm == null) { Log.e(TAG, "alarm $id fired but is not in the store"); stopSelf(); return START_NOT_STICKY }
                 ring(alarm)
             }
-            ACTION_STOP -> { stopEverything(); stopSelf() }
+            ACTION_STOP -> {
+                // Grab it before stopEverything() clears it.
+                val justRang = currentAlarmId
+                stopEverything()
+                renderNextBriefing(justRang)
+                stopSelf()
+            }
             ACTION_SNOOZE -> {
                 val id = intent.getIntExtra(AlarmReceiver.EXTRA_ID, -1)
                 snooze(id)
@@ -107,6 +113,23 @@ class AlarmService : Service() {
                 handler.postDelayed(this, 1000L)
             }
         }.also { handler.postDelayed(it, 1000L) }
+    }
+
+    /**
+     * The briefing that just played was written for THIS morning — it said this day and this
+     * time out loud. The receiver has already re-armed a repeating alarm for next week, so the
+     * file on disk is now about a morning that has been and gone.
+     *
+     * Render the next one now, with a whole day of network ahead of it rather than none at
+     * 04:40. Without this a repeating alarm plays one identical recording every morning
+     * forever — which is exactly the sound a brain learns to sleep through, and the reason
+     * this app speaks at all.
+     */
+    private fun renderNextBriefing(id: Int?) {
+        val alarm = id?.let { AlarmStore.get(this, it) } ?: return
+        if (!alarm.enabled || !alarm.voice) return   // a spent one-shot needs nothing
+        VoiceCache.clear(this, alarm.id)
+        VoiceCache.refresh(applicationContext, alarm)
     }
 
     private fun snooze(id: Int) {

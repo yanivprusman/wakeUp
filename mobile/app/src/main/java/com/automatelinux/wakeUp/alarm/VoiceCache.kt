@@ -19,6 +19,12 @@ import java.net.URL
  * the bedtime check tells you the night before. The tone and the ladder still run — the voice
  * is a layer on top, not the mechanism — but you are never left thinking you have something
  * you do not.
+ *
+ * **A cached briefing belongs to ONE occurrence.** It names the day and the time it will ring,
+ * so the moment the fire time moves — the alarm is re-timed, re-dayed, switched back on, or
+ * has just gone off and re-armed for next week — the file on disk is about a morning that is
+ * no longer coming. Every caller that moves the fire time re-renders; see `rearm` in
+ * AlarmListScreen and the STOP path in [AlarmService].
  */
 object VoiceCache {
 
@@ -40,7 +46,15 @@ object VoiceCache {
      */
     fun refreshBlocking(context: Context, alarm: Alarm): Boolean {
         val base = BuildConfig.API_BASE_URL.trimEnd('/')
-        val url = "$base/api/wake-audio?label=${java.net.URLEncoder.encode(alarm.label, "UTF-8")}"
+        // `at` is the moment it will RING, never "now". The render happens at bedtime and the
+        // playback happens the next morning, so a server reading its own clock announced the
+        // evening you set the alarm to someone standing in the dark eight hours later.
+        val url = buildString {
+            append(base).append("/api/wake-audio")
+            append("?label=").append(java.net.URLEncoder.encode(alarm.label, "UTF-8"))
+            append("&at=").append(alarm.nextTrigger())
+            append("&tz=").append(java.net.URLEncoder.encode(java.util.TimeZone.getDefault().id, "UTF-8"))
+        }
         val dest = file(context, alarm.id)
         val tmp = File(dest.absolutePath + ".part")
 
