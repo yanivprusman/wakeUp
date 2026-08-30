@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -22,8 +25,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.automatelinux.wakeUp.alarm.*
@@ -80,7 +88,11 @@ fun AlarmListScreen() {
         },
     ) { padding ->
         LazyColumn(
-            Modifier.padding(padding).fillMaxSize(),
+            // imePadding, because the window is edge-to-edge: enableEdgeToEdge turns off
+            // decorFitsSystemWindows, so the keyboard arrives as an inset and does NOT resize
+            // the window. Without this the name field of any alarm below the first is typed
+            // into from underneath the keyboard.
+            Modifier.padding(padding).fillMaxSize().imePadding(),
             contentPadding = PaddingValues(bottom = 96.dp),
         ) {
             item { Header(next) }
@@ -127,6 +139,16 @@ fun AlarmListScreen() {
                     },
                     onChallenge = { c ->
                         AlarmStore.upsert(context, alarm.copy(challenge = c)); refresh()
+                    },
+                    onRename = { name ->
+                        val updated = alarm.copy(label = name)
+                        AlarmStore.upsert(context, updated)
+                        // The briefing OPENS by saying the name, so a rename makes the cached
+                        // WAV belong to an alarm that no longer exists. Drop it and fetch the
+                        // new one rather than be greeted tomorrow by yesterday's name.
+                        VoiceCache.clear(context, alarm.id)
+                        if (updated.voice) cacheVoice(updated)
+                        refresh()
                     },
                     onRecache = { cacheVoice(alarm) },
                     onTest = { AlarmService.test(context, alarm.id) },
@@ -276,6 +298,7 @@ private fun AlarmCard(
     onDelete: () -> Unit,
     onToggleDay: (Int) -> Unit,
     onChallenge: (Challenge) -> Unit,
+    onRename: (String) -> Unit,
     onRecache: () -> Unit,
     onTest: () -> Unit,
 ) {
@@ -303,6 +326,9 @@ private fun AlarmCard(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline,
             )
+
+            Spacer(Modifier.height(12.dp))
+            NameField(name = alarm.label, onCommit = onRename)
 
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -362,6 +388,59 @@ private fun AlarmCard(
             }
         }
     }
+}
+
+/**
+ * The alarm's name, edited in place.
+ *
+ * The name was never decoration and it was never editable: the notification title, the ring
+ * screen's headline and the FIRST WORDS Claude speaks are all this one string, and nothing in
+ * the app could set it — every alarm was "Alarm", greeted with "Good morning."
+ *
+ * It looks like the day and challenge toggles — the same rounded surfaceVariant box — so that
+ * "you can touch this" is said the same way everywhere on the card.
+ *
+ * Typing stays local and is written once, when the field is left. Saving per keystroke would
+ * round-trip through SharedPreferences and re-sort the list on every letter, which moves the
+ * cursor out from under the finger.
+ */
+@Composable
+private fun NameField(name: String, onCommit: (String) -> Unit) {
+    var text by remember(name) { mutableStateOf(name) }
+    var wasFocused by remember { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
+
+    BasicTextField(
+        value = text,
+        // A name, not a note: it is spoken aloud and it sits under a 52sp clock.
+        onValueChange = { text = it.take(40) },
+        singleLine = true,
+        textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { state ->
+                if (wasFocused && !state.isFocused) {
+                    val trimmed = text.trim()
+                    text = trimmed
+                    if (trimmed != name) onCommit(trimmed)
+                }
+                wasFocused = state.isFocused
+            }
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        decorationBox = { field ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (text.isEmpty()) {
+                    Text("Name it", fontSize = 15.sp, color = MaterialTheme.colorScheme.outline)
+                }
+                field()
+            }
+        },
+    )
 }
 
 /**
