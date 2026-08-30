@@ -25,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -140,13 +139,24 @@ fun AlarmListScreen() {
                     onChallenge = { c ->
                         AlarmStore.upsert(context, alarm.copy(challenge = c)); refresh()
                     },
-                    onRename = { name ->
-                        val updated = alarm.copy(label = name)
+                    // Every keystroke reaches the disk. A name typed and then abandoned —
+                    // back pressed, app swiped away, screen off — is a name the user believes
+                    // they set, and this app's whole promise is that what you set is what
+                    // happens. Deliberately NOT a full refresh(): that re-runs the whole
+                    // readiness scan, which has no business firing once per letter.
+                    onType = { raw ->
+                        val updated = alarm.copy(label = raw)
                         AlarmStore.upsert(context, updated)
-                        // The briefing OPENS by saying the name, so a rename makes the cached
-                        // WAV belong to an alarm that no longer exists. Drop it and fetch the
-                        // new one rather than be greeted tomorrow by yesterday's name.
-                        VoiceCache.clear(context, alarm.id)
+                        alarms = alarms.map { if (it.id == updated.id) updated else it }
+                    },
+                    onSettled = { finalName ->
+                        val updated = alarm.copy(label = finalName)
+                        AlarmStore.upsert(context, updated)
+                        // The briefing OPENS by saying the name, so the cached WAV now greets
+                        // you by a name this alarm no longer has. Delete before fetching: the
+                        // card then reads "no briefing" honestly while the new one renders,
+                        // and a failed fetch leaves nothing rather than the wrong thing.
+                        VoiceCache.clear(context, updated.id)
                         if (updated.voice) cacheVoice(updated)
                         refresh()
                     },
@@ -298,7 +308,8 @@ private fun AlarmCard(
     onDelete: () -> Unit,
     onToggleDay: (Int) -> Unit,
     onChallenge: (Challenge) -> Unit,
-    onRename: (String) -> Unit,
+    onType: (String) -> Unit,
+    onSettled: (String) -> Unit,
     onRecache: () -> Unit,
     onTest: () -> Unit,
 ) {
@@ -328,7 +339,7 @@ private fun AlarmCard(
             )
 
             Spacer(Modifier.height(12.dp))
-            NameField(name = alarm.label, onCommit = onRename)
+            NameField(name = alarm.label, onType = onType, onSettled = onSettled)
 
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -400,20 +411,32 @@ private fun AlarmCard(
  * It looks like the day and challenge toggles — the same rounded surfaceVariant box — so that
  * "you can touch this" is said the same way everywhere on the card.
  *
- * Typing stays local and is written once, when the field is left. Saving per keystroke would
- * round-trip through SharedPreferences and re-sort the list on every letter, which moves the
- * cursor out from under the finger.
+ * Two callbacks, because the two things a rename touches cost wildly different amounts.
+ * [onType] fires per keystroke and writes the name — a SharedPreferences apply(), and cheap
+ * enough that the name can never be lost to a back press or a swiped-away app. [onSettled]
+ * fires once typing pauses and re-renders Claude's briefing, which is a Kokoro render over
+ * the network: one per name, never one per letter.
  */
 @Composable
-private fun NameField(name: String, onCommit: (String) -> Unit) {
-    var text by remember(name) { mutableStateOf(name) }
-    var wasFocused by remember { mutableStateOf(false) }
+private fun NameField(name: String, onType: (String) -> Unit, onSettled: (String) -> Unit) {
+    // Seeded once, on purpose. `items(key = { it.id })` already gives one of these per alarm,
+    // and re-seeding from the store as it saves would swallow the space you just typed.
+    var text by remember { mutableStateOf(name) }
+    var settled by remember { mutableStateOf(name.trim()) }
     val focus = LocalFocusManager.current
+
+    LaunchedEffect(text) {
+        val trimmed = text.trim()
+        if (trimmed == settled) return@LaunchedEffect
+        delay(1200)
+        settled = trimmed
+        onSettled(trimmed)
+    }
 
     BasicTextField(
         value = text,
         // A name, not a note: it is spoken aloud and it sits under a 52sp clock.
-        onValueChange = { text = it.take(40) },
+        onValueChange = { text = it.take(40); onType(text) },
         singleLine = true,
         textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -421,14 +444,6 @@ private fun NameField(name: String, onCommit: (String) -> Unit) {
         keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
         modifier = Modifier
             .fillMaxWidth()
-            .onFocusChanged { state ->
-                if (wasFocused && !state.isFocused) {
-                    val trimmed = text.trim()
-                    text = trimmed
-                    if (trimmed != name) onCommit(trimmed)
-                }
-                wasFocused = state.isFocused
-            }
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = 12.dp, vertical = 11.dp),
