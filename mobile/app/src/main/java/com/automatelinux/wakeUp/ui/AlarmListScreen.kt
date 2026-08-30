@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -43,6 +44,19 @@ private val DAY_NAMES = listOf(
     Calendar.SATURDAY to "Sa",
 )
 
+/**
+ * What the time picker is about to set. One dialog serves both jobs, and a nullable alarm
+ * plus a boolean would leave "new" and "editing nothing" as the same value — the exact
+ * ambiguity that makes a picker save over the wrong row.
+ */
+private sealed interface TimeTarget {
+    /** A brand-new alarm, seeded from the clock. */
+    object New : TimeTarget
+
+    /** One already on the list; everything but the time is kept. */
+    data class Existing(val alarm: Alarm) : TimeTarget
+}
+
 /** "in 6h 20m" — the only number that answers the question you actually have at bedtime. */
 private fun countdown(millisFromNow: Long): String {
     val minutes = (millisFromNow / 60_000).coerceAtLeast(0)
@@ -62,7 +76,7 @@ fun AlarmListScreen() {
     var alarms by remember { mutableStateOf(AlarmStore.all(context)) }
     var problems by remember { mutableStateOf(Readiness.problems(context)) }
     var caching by remember { mutableStateOf(setOf<Int>()) }
-    var picking by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf<TimeTarget?>(null) }
 
     fun refresh() {
         alarms = AlarmStore.all(context)
@@ -80,7 +94,7 @@ fun AlarmListScreen() {
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { picking = true },
+                onClick = { picking = TimeTarget.New },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) { Icon(Icons.Filled.Add, contentDescription = "Add alarm") }
@@ -139,6 +153,7 @@ fun AlarmListScreen() {
                     onChallenge = { c ->
                         AlarmStore.upsert(context, alarm.copy(challenge = c)); refresh()
                     },
+                    onEditTime = { picking = TimeTarget.Existing(alarm) },
                     // Every keystroke reaches the disk. A name typed and then abandoned —
                     // back pressed, app swiped away, screen off — is a name the user believes
                     // they set, and this app's whole promise is that what you set is what
@@ -167,19 +182,34 @@ fun AlarmListScreen() {
         }
     }
 
-    if (picking) {
+    picking?.let { target ->
         val now = Calendar.getInstance()
+        val existing = (target as? TimeTarget.Existing)?.alarm
         WakeTimeDialog(
-            initialHour = now.get(Calendar.HOUR_OF_DAY),
-            initialMinute = now.get(Calendar.MINUTE),
-            onDismiss = { picking = false },
+            title = if (existing == null) "Wake me at" else "Move it to",
+            initialHour = existing?.hour ?: now.get(Calendar.HOUR_OF_DAY),
+            initialMinute = existing?.minute ?: now.get(Calendar.MINUTE),
+            onDismiss = { picking = null },
             onConfirm = { h, m ->
-                picking = false
-                val alarm = Alarm(id = AlarmStore.nextId(context), hour = h, minute = m)
-                AlarmStore.upsert(context, alarm)
-                AlarmScheduler.schedule(context, alarm)
-                cacheVoice(alarm)   // get Claude's line onto the phone now, not at 04:40
-                refresh()
+                picking = null
+                if (existing == null) {
+                    val alarm = Alarm(id = AlarmStore.nextId(context), hour = h, minute = m)
+                    AlarmStore.upsert(context, alarm)
+                    AlarmScheduler.schedule(context, alarm)
+                    cacheVoice(alarm)   // get Claude's line onto the phone now, not at 04:40
+                    refresh()
+                } else {
+                    val updated = existing.copy(hour = h, minute = m)
+                    AlarmStore.upsert(context, updated)
+                    // No cancel first: the PendingIntent is keyed on the id, so setAlarmClock
+                    // replaces the old time outright — and schedule() cancels by itself when
+                    // the alarm is off, which is the case a separate cancel would get wrong.
+                    AlarmScheduler.schedule(context, updated)
+                    // The briefing is NOT re-fetched: it never mentions the alarm's time, only
+                    // the name. Re-rendering here would spend a Kokoro pass to produce the
+                    // identical WAV.
+                    refresh()
+                }
             },
         )
     }
@@ -308,6 +338,7 @@ private fun AlarmCard(
     onDelete: () -> Unit,
     onToggleDay: (Int) -> Unit,
     onChallenge: (Challenge) -> Unit,
+    onEditTime: () -> Unit,
     onType: (String) -> Unit,
     onSettled: (String) -> Unit,
     onRecache: () -> Unit,
@@ -321,14 +352,33 @@ private fun AlarmCard(
         // A disabled alarm is still on the list, but it must never read as armed at a glance.
         Column(Modifier.padding(20.dp).alpha(if (alarm.enabled) 1f else 0.45f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "%02d:%02d".format(alarm.hour, alarm.minute),
-                    fontSize = 52.sp,
-                    fontWeight = FontWeight.Light,
-                    color = if (alarm.enabled) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
+                // The clock opens the picker. The pencil is there because an invisible tap
+                // target is the same problem as no tap target: the time sat here unchangeable
+                // for long enough that "can I even edit this?" was a fair question, and a
+                // ripple you only find by guessing does not answer it.
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(onClick = onEditTime)
+                        .padding(end = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "%02d:%02d".format(alarm.hour, alarm.minute),
+                        fontSize = 52.sp,
+                        fontWeight = FontWeight.Light,
+                        color = if (alarm.enabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Change the time",
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 Switch(checked = alarm.enabled, onCheckedChange = onToggle)
             }
 
@@ -519,6 +569,7 @@ private fun ChallengePill(label: String, selected: Boolean, modifier: Modifier, 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WakeTimeDialog(
+    title: String,
     initialHour: Int,
     initialMinute: Int,
     onDismiss: () -> Unit,
@@ -528,7 +579,7 @@ private fun WakeTimeDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
-        title = { Text("Wake me at") },
+        title = { Text(title) },
         text = { TimePicker(state = state) },
         confirmButton = { TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("Set") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
