@@ -40,10 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Bind-mounted from addnewfeature (source of truth)
-lib/feedback-lib/
-app/api/feedback/
-app/feedback-lib-issues/
 
 # Mobile (KMP) project (bind-mounted from addnewfeature)
 mobile/feedback-lib/

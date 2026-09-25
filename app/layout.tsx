@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { FeedbackChat } from '@automate/feedback-lib/FeedbackChat';
+import FeedbackChatMount from "./FeedbackChatMount";
 
 export const metadata: Metadata = {
   title: "wakeUp",
@@ -11,7 +11,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body>{children}
-        <FeedbackChat issuesPath="/feedback-lib-issues" />
+        <FeedbackChatMount />
 </body>
     </html>
   );
