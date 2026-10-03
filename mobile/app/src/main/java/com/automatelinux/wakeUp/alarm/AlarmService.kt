@@ -65,6 +65,7 @@ class AlarmService : Service() {
     private fun ring(alarm: Alarm) {
         currentAlarmId = alarm.id
         startForegroundNotification(alarm)
+        showRingScreen(alarm)
 
         wakeLock = getSystemService(PowerManager::class.java)
             ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wakeUp:ring")
@@ -78,6 +79,31 @@ class AlarmService : Service() {
             if (alarm.voice) a.speak(VoiceCache.file(this, alarm.id))
         }
         runTimeline(alarm)
+    }
+
+    /**
+     * Put [RingActivity] on screen ourselves, whatever the phone is doing.
+     *
+     * The notification's full-screen intent is not enough on its own: Android honours it only
+     * on a phone that is locked or asleep. On a phone in use it becomes a banner, and the
+     * alarm — whose notification has no stop button, by design — has to be found in the shade
+     * while the ladder climbs. Measured 2026-10-04 on the A53: 67 seconds from the first sound
+     * to the stop, the last 22 of them at full stream with the strobe on.
+     *
+     * A service may only open a screen from the background if the app holds "Appear on top"
+     * ([Readiness] says so when it does not). Without it the system drops this call and the
+     * notification is all there is; with the app already on screen — the test button — it
+     * needs no grant at all. [RingActivity] is singleTask, so on a locked phone, where the
+     * full-screen intent fires as well, the two arrive at the same screen.
+     */
+    private fun showRingScreen(alarm: Alarm) {
+        runCatching { startActivity(ringIntent(alarm)) }
+            .onFailure { Log.e(TAG, "could not open the ring screen for alarm ${alarm.id}", it) }
+    }
+
+    private fun ringIntent(alarm: Alarm) = Intent(this, RingActivity::class.java).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        putExtra(AlarmReceiver.EXTRA_ID, alarm.id)
     }
 
     /**
@@ -177,11 +203,7 @@ class AlarmService : Service() {
         }
 
         val full = PendingIntent.getActivity(
-            this, alarm.id,
-            Intent(this, RingActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                putExtra(AlarmReceiver.EXTRA_ID, alarm.id)
-            },
+            this, alarm.id, ringIntent(alarm),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

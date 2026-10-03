@@ -12,6 +12,11 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- A full-screen intent only takes the screen of a phone that is locked or asleep. On a
+         phone in use Android turns it into a banner, and the alarm has to be dug out of the
+         shade while it climbs to full volume. "Appear on top" is the one grant that lets a
+         background app open its own screen, so the ring screen can show itself. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />

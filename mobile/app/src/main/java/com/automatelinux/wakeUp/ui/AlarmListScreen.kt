@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.automatelinux.wakeUp.alarm.*
 import kotlinx.coroutines.delay
 import java.util.Calendar
@@ -86,6 +87,13 @@ fun AlarmListScreen() {
     fun cacheVoice(alarm: Alarm) {
         caching = caching + alarm.id
         VoiceCache.refresh(context, alarm) { caching = caching - alarm.id; refresh() }
+    }
+
+    // Every "Fix this" but the briefing's sends you to a settings screen, and coming back is
+    // the moment the problem stops being true. Without this the card kept saying it.
+    LifecycleResumeEffect(Unit) {
+        refresh()
+        onPauseOrDispose { }
     }
 
     // A briefing that is not here gets fetched when the app opens, without being asked. The
@@ -621,6 +629,8 @@ private fun openFix(context: Context, fix: Fix) {
         // that flags the app in review, and the list is one tap further for the same result.
         Fix.BATTERY -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
         Fix.DND_ACCESS -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+        Fix.APPEAR_ON_TOP ->
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
         Fix.CACHE_VOICE -> null
     }
     intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let { context.startActivity(it) }

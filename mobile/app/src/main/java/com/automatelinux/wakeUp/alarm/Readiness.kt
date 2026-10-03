@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import com.automatelinux.wakeUp.MainActivity
 import com.automatelinux.wakeUp.R
@@ -18,7 +19,7 @@ import java.util.Calendar
 /** One thing that would stop tomorrow's alarm working. */
 data class Problem(val title: String, val detail: String, val fix: Fix?, val alarmId: Int? = null)
 
-enum class Fix { EXACT_ALARMS, NOTIFICATIONS, BATTERY, DND_ACCESS, CACHE_VOICE }
+enum class Fix { EXACT_ALARMS, NOTIFICATIONS, BATTERY, DND_ACCESS, APPEAR_ON_TOP, CACHE_VOICE }
 
 /**
  * Everything that has to still be true tonight for the alarm to go off tomorrow.
@@ -62,6 +63,13 @@ object Readiness {
                 "No Do Not Disturb access",
                 "Without it the alarm channel cannot promise to bypass Do Not Disturb.",
                 Fix.DND_ACCESS,
+            ))
+        }
+        if (!Settings.canDrawOverlays(context)) {
+            add(Problem(
+                "The alarm cannot open over other apps",
+                "If it rings while you are using the phone, you get only a notification to go and find. Allow it to appear on top and the alarm screen opens by itself.",
+                Fix.APPEAR_ON_TOP,
             ))
         }
         AlarmStore.all(context).filter { it.enabled && it.voice }.forEach { alarm ->
