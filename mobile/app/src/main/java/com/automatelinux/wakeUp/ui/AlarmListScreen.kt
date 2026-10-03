@@ -323,7 +323,7 @@ private fun ProblemsCard(problems: List<Problem>, onFix: (Fix) -> Unit) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
-                "Tomorrow is not safe",
+                "Not ready for tomorrow",
                 fontWeight = FontWeight.Bold, fontSize = 17.sp,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )

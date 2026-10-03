@@ -114,7 +114,7 @@ object Readiness {
             BEDTIME_NOTIFICATION,
             Notification.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_alarm)
-                .setContentTitle("Tomorrow's alarm is not safe")
+                .setContentTitle("Tomorrow's alarm is not ready")
                 .setStyle(Notification.BigTextStyle().bigText(body))
                 .setContentText(problems.first().title)
                 .setContentIntent(open)
