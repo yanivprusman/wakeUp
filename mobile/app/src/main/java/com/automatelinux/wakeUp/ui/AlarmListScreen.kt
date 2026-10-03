@@ -441,8 +441,7 @@ private fun AlarmCard(
                     Challenge.SHAKE -> "Shake it hard, ${alarm.requiredCorrect}×"
                 },
                 fontSize = 12.sp,
-                color = if (alarm.challenge == Challenge.NONE) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(top = 8.dp),
             )
 
