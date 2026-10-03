@@ -16,7 +16,7 @@ import com.automatelinux.wakeUp.R
 import java.util.Calendar
 
 /** One thing that would stop tomorrow's alarm working. */
-data class Problem(val title: String, val detail: String, val fix: Fix?)
+data class Problem(val title: String, val detail: String, val fix: Fix?, val alarmId: Int? = null)
 
 enum class Fix { EXACT_ALARMS, NOTIFICATIONS, BATTERY, DND_ACCESS, CACHE_VOICE }
 
@@ -70,6 +70,7 @@ object Readiness {
                     "No briefing for %02d:%02d".format(alarm.hour, alarm.minute),
                     "Claude's line for this alarm is not on the phone. It will still ring — with the tone only.",
                     Fix.CACHE_VOICE,
+                    alarmId = alarm.id,
                 ))
             }
         }

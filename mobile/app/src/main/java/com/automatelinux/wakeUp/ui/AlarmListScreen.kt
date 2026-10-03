@@ -88,6 +88,13 @@ fun AlarmListScreen() {
         VoiceCache.refresh(context, alarm) { caching = caching - alarm.id; refresh() }
     }
 
+    // A briefing that is not here gets fetched when the app opens, without being asked. The
+    // problems card is for a fetch that failed — not for one that nobody has tried.
+    LaunchedEffect(Unit) {
+        alarms.filter { it.enabled && it.voice && VoiceCache.state(context, it.id) != VoiceCache.State.CACHED }
+            .forEach(::cacheVoice)
+    }
+
     /**
      * Every edit that moves WHEN an alarm next rings goes through here — one door, so the next
      * one added cannot quietly skip the second half.
@@ -133,9 +140,14 @@ fun AlarmListScreen() {
         ) {
             item { Header(next) }
 
-            if (problems.isNotEmpty()) {
+            // A briefing that is on its way is not a problem yet. Every edit to an alarm clears
+            // its recording and fetches a new one, so without this the card went red for the
+            // seconds of every ordinary download — an error shown for work in progress. The
+            // alarm's own row says "Fetching…" meanwhile; the card is for what did not arrive.
+            val standing = problems.filterNot { it.alarmId != null && it.alarmId in caching }
+            if (standing.isNotEmpty()) {
                 item {
-                    ProblemsCard(problems) { fix ->
+                    ProblemsCard(standing) { fix ->
                         if (fix == Fix.CACHE_VOICE) alarms.filter { it.enabled && it.voice }.forEach(::cacheVoice)
                         else openFix(context, fix)
                     }
@@ -439,7 +451,7 @@ private fun AlarmCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     when {
-                        caching -> "Fetching Claude's line…"
+                        caching -> "Fetching the briefing…"
                         voiceState == VoiceCache.State.CACHED -> "Briefing on this phone"
                         else -> "No briefing — tone only"
                     },

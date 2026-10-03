@@ -59,15 +59,35 @@ object VoiceCache {
         val tmp = File(dest.absolutePath + ".part")
 
         return runCatching {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8_000
-                readTimeout = 150_000   // Kokoro renders at ~0.13x realtime; a briefing takes seconds
-                requestMethod = "GET"
+            // An idle dev server is put to sleep, and the daemon answers on its port instead:
+            // 503 with a Retry-After, while it starts the real one. That is "ask again in a
+            // moment" said in so many words. Reading it as a failure is how a briefing went
+            // missing on 2026-10-04 for a server that was up 219ms later — so a 503 that
+            // names its own wait is waited out, and only that; any other answer is final.
+            var waited = 0
+            while (true) {
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 8_000
+                    readTimeout = 150_000   // Kokoro renders at ~0.13x realtime; a briefing takes seconds
+                    requestMethod = "GET"
+                }
+                try {
+                    val code = conn.responseCode
+                    val retryAfter = conn.getHeaderField("Retry-After")?.trim()?.toLongOrNull()
+                    if (code == 503 && retryAfter != null && waited < STARTING_WAITS) {
+                        waited++
+                        Log.i(TAG, "server is starting; asking again in ${retryAfter}s ($waited/$STARTING_WAITS)")
+                        Thread.sleep(retryAfter.coerceIn(1, 10) * 1000)
+                        continue
+                    }
+                    if (code != 200) error("HTTP $code")
+                    conn.inputStream.use { input -> tmp.outputStream().use { out -> input.copyTo(out) } }
+                    if (tmp.length() == 0L) error("HTTP 200, 0 bytes")
+                    break
+                } finally {
+                    conn.disconnect()
+                }
             }
-            conn.inputStream.use { input -> tmp.outputStream().use { out -> input.copyTo(out) } }
-            val code = conn.responseCode
-            conn.disconnect()
-            if (code != 200 || tmp.length() == 0L) error("HTTP $code, ${tmp.length()} bytes")
             // Swap only once the whole file is down, so a killed download can never leave a
             // truncated WAV that plays as a click and nothing else.
             if (dest.exists()) dest.delete()
@@ -89,4 +109,5 @@ object VoiceCache {
     }
 
     private const val TAG = "VoiceCache"
+    private const val STARTING_WAITS = 20   // about a minute at the daemon's Retry-After: 3
 }
