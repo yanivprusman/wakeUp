@@ -7,8 +7,14 @@ import { join } from 'path';
 
 const execFileAsync = promisify(execFile);
 
-const KOKORO_RENDER = '/opt/dev/claude-voice/bin/kokoro-render';
-const VOICE = 'af_heart';
+// `say` is the one door into the voice, and this goes through it — `-s` renders to a file
+// instead of speaking. It used to call kokoro-render, the English engine, by name: one layer
+// BELOW where `say` cuts a line into runs by script and gives the Hebrew ones to the Hebrew
+// voice. So when that was fixed for everything `say` speaks (2026-09-28), this did not get
+// it, and an alarm named לגל טל woke its owner with "Hebrew lamed, Hebrew gimel, Hebrew
+// lamed". Which engine, which voice and how two scripts share a sentence are `say`'s to
+// decide; a caller that names an engine has taken a copy of that decision.
+const SAY = '/root/bin/say';
 
 /**
  * The morning briefing, rendered to a WAV.
@@ -65,11 +71,16 @@ export async function GET(req: NextRequest) {
     // path as a renderer that failed — not in an unhandled 500 with no detail.
     const text = override || briefing(new Date(at), label, params.get('tz') || undefined);
 
-    // Text on stdin, voice and destination as arguments — kokoro-render writes nothing and
-    // exits non-zero on failure, so an empty file can never be served as a briefing.
-    await execFileAsync('bash', ['-c',
-      `printf '%s' ${JSON.stringify(text)} | ${KOKORO_RENDER} ${VOICE} ${JSON.stringify(dest)}`,
-    ], { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+    // Text on stdin, never on a command line: the label is whatever was typed on the phone,
+    // and this used to be pasted into a `bash -c` string, where a name containing $(…) ran.
+    // `say -s` writes nothing and exits non-zero on failure, so an empty file can never be
+    // served as a briefing.
+    const rendering = execFileAsync(SAY, ['-s', dest], { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+    // A `say` that dies before reading leaves a broken pipe; the exit status below is the
+    // error that gets reported, and an unhandled stream error would take the server with it.
+    rendering.child.stdin?.on('error', () => {});
+    rendering.child.stdin?.end(text);
+    await rendering;
 
     const wav = await readFile(dest);
     if (wav.length === 0) throw new Error('renderer produced an empty file');
