@@ -37,7 +37,7 @@ data class Alarm(
     val days: Set<Int> = emptySet(),
     val enabled: Boolean = true,
     val label: String = "",
-    val challenge: Challenge = Challenge.MATH,
+    val challenge: Challenge = Challenge.NONE,   // the owner's default: one tap stops it
     /**
      * How many correct answers in a row before Stop unlocks. One is a coin flip you can win
      * asleep; two means the first was not luck.
@@ -90,8 +90,8 @@ data class Alarm(
                 days = days,
                 enabled = o.optBoolean("enabled", true),
                 label = o.optString("label", ""),
-                challenge = runCatching { Challenge.valueOf(o.optString("challenge", "MATH")) }
-                    .getOrDefault(Challenge.MATH),
+                challenge = runCatching { Challenge.valueOf(o.optString("challenge", "NONE")) }
+                    .getOrDefault(Challenge.NONE),
                 requiredCorrect = o.optInt("requiredCorrect", 2),
                 vibrate = o.optBoolean("vibrate", true),
                 flash = o.optBoolean("flash", true),
