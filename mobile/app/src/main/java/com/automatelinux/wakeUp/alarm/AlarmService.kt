@@ -154,6 +154,10 @@ class AlarmService : Service() {
     private fun renderNextBriefing(id: Int?) {
         val alarm = id?.let { AlarmStore.get(this, it) } ?: return
         if (!alarm.enabled || !alarm.voice) return   // a spent one-shot needs nothing
+        // A TEST ring moves nothing: the next morning is the same one, and so is the file. It
+        // used to be thrown away and re-fetched anyway — so pressing play at night, offline,
+        // cost you tomorrow's briefing (and, online, showed "No briefing" while it re-rendered).
+        if (VoiceCache.renderedFor(this, alarm.id) == alarm.nextTrigger()) return
         VoiceCache.clear(this, alarm.id)
         VoiceCache.refresh(applicationContext, alarm)
     }

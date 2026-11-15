@@ -76,7 +76,11 @@ fun AlarmListScreen() {
     val context = LocalContext.current
     var alarms by remember { mutableStateOf(AlarmStore.all(context)) }
     var problems by remember { mutableStateOf(Readiness.problems(context)) }
-    var caching by remember { mutableStateOf(setOf<Int>()) }
+    // What is being fetched and what is on disk are VoiceCache's to say, not this screen's:
+    // the ring service clears and re-fetches briefings too, and a private copy here missed
+    // those and stayed red for a briefing that had already arrived (2026-11-15).
+    val caching by VoiceCache.fetching.collectAsState()
+    val diskVersion by VoiceCache.changes.collectAsState()
     var picking by remember { mutableStateOf<TimeTarget?>(null) }
 
     fun refresh() {
@@ -84,9 +88,11 @@ fun AlarmListScreen() {
         problems = Readiness.problems(context)
     }
 
+    // A briefing landed or vanished — from this screen, the service, or the bedtime check.
+    LaunchedEffect(diskVersion) { refresh() }
+
     fun cacheVoice(alarm: Alarm) {
-        caching = caching + alarm.id
-        VoiceCache.refresh(context, alarm) { caching = caching - alarm.id; refresh() }
+        VoiceCache.refresh(context, alarm)
     }
 
     // Every "Fix this" but the briefing's sends you to a settings screen, and coming back is
@@ -173,7 +179,7 @@ fun AlarmListScreen() {
             items(alarms, key = { it.id }) { alarm ->
                 AlarmCard(
                     alarm = alarm,
-                    voiceState = VoiceCache.state(context, alarm.id),
+                    voiceState = diskVersion.let { VoiceCache.state(context, alarm.id) },   // re-read on every disk change
                     caching = alarm.id in caching,
                     onToggle = { on -> rearm(alarm, alarm.copy(enabled = on)) },
                     onDelete = {
