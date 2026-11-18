@@ -245,7 +245,9 @@ fun AlarmListScreen() {
                     // No cancel first: the PendingIntent is keyed on the id, so setAlarmClock
                     // replaces the old time outright — and schedule() cancels by itself when
                     // the alarm is off, which is the case a separate cancel would get wrong.
-                    rearm(existing, existing.copy(hour = h, minute = m))
+                    // Choosing a wake time is asking to be woken at it: an alarm that was off
+                    // comes back on, or the picker would hand back a time that never rings.
+                    rearm(existing, existing.copy(hour = h, minute = m, enabled = true))
                 }
             },
         )
