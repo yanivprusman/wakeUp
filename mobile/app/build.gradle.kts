@@ -79,4 +79,5 @@ dependencies {
     // Core
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
+    implementation(libs.work.runtime.ktx)
 }

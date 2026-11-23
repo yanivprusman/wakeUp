@@ -91,8 +91,8 @@ fun AlarmListScreen() {
     // A briefing landed or vanished — from this screen, the service, or the bedtime check.
     LaunchedEffect(diskVersion) { refresh() }
 
-    fun cacheVoice(alarm: Alarm) {
-        VoiceCache.refresh(context, alarm)
+    fun cacheVoice(alarm: Alarm, replace: Boolean) {
+        VoiceCache.refresh(context, alarm, replace)
     }
 
     // Every "Fix this" but the briefing's sends you to a settings screen, and coming back is
@@ -106,7 +106,7 @@ fun AlarmListScreen() {
     // problems card is for a fetch that failed — not for one that nobody has tried.
     LaunchedEffect(Unit) {
         alarms.filter { it.enabled && it.voice && VoiceCache.state(context, it.id) != VoiceCache.State.CACHED }
-            .forEach(::cacheVoice)
+            .forEach { cacheVoice(it, replace = false) }
     }
 
     /**
@@ -127,7 +127,7 @@ fun AlarmListScreen() {
             // Cleared before fetching: a failed render must leave "no briefing", which the card
             // and the bedtime check both say out loud — never the briefing for another morning.
             VoiceCache.clear(context, new.id)
-            cacheVoice(new)
+            cacheVoice(new, replace = true)
         }
         refresh()
     }
@@ -162,7 +162,7 @@ fun AlarmListScreen() {
             if (standing.isNotEmpty()) {
                 item {
                     ProblemsCard(standing) { fix ->
-                        if (fix == Fix.CACHE_VOICE) alarms.filter { it.enabled && it.voice }.forEach(::cacheVoice)
+                        if (fix == Fix.CACHE_VOICE) alarms.filter { it.enabled && it.voice }.forEach { cacheVoice(it, replace = true) }
                         else openFix(context, fix)
                     }
                 }
@@ -215,10 +215,10 @@ fun AlarmListScreen() {
                         // card then reads "no briefing" honestly while the new one renders,
                         // and a failed fetch leaves nothing rather than the wrong thing.
                         VoiceCache.clear(context, updated.id)
-                        if (updated.voice) cacheVoice(updated)
+                        if (updated.voice) cacheVoice(updated, replace = true)
                         refresh()
                     },
-                    onRecache = { cacheVoice(alarm) },
+                    onRecache = { cacheVoice(alarm, replace = true) },
                     onTest = { AlarmService.test(context, alarm.id) },
                 )
             }
@@ -239,7 +239,7 @@ fun AlarmListScreen() {
                     val alarm = Alarm(id = AlarmStore.nextId(context), hour = h, minute = m)
                     AlarmStore.upsert(context, alarm)
                     AlarmScheduler.schedule(context, alarm)
-                    cacheVoice(alarm)   // get Claude's line onto the phone now, not at 04:40
+                    cacheVoice(alarm, replace = true)   // get Claude's line onto the phone now, not at 04:40
                     refresh()
                 } else {
                     // No cancel first: the PendingIntent is keyed on the id, so setAlarmClock

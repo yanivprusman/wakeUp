@@ -132,19 +132,25 @@ object Readiness {
         )
     }
 
+    /** Take the warning down once nothing in it is true any more; never post one. */
+    fun clearIfReady(context: Context) {
+        if (problems(context).isEmpty()) {
+            context.getSystemService(NotificationManager::class.java)?.cancel(BEDTIME_NOTIFICATION)
+        }
+    }
+
     private const val CHANNEL = "wakeup.bedtime"
     private const val BEDTIME_NOTIFICATION = 2001
     private const val BEDTIME_REQUEST = 9001
 }
 
-/** 22:00. Anything wrong with tomorrow's alarm gets said now, not at 06:00. */
+/**
+ * 22:00. Anything wrong with tomorrow's alarm gets said now, not at 06:00. The work itself is in
+ * [BedtimeWorker]: it downloads a missing briefing first, and warns only about what is still
+ * wrong afterwards.
+ */
 class BedtimeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Readiness.notifyIfNotReady(context)
-        // Re-cache tonight so a stale or missing briefing repairs itself while you sleep.
-        AlarmStore.all(context).filter { it.enabled && it.voice }.forEach { alarm ->
-            Thread { VoiceCache.refreshBlocking(context.applicationContext, alarm) }
-                .apply { isDaemon = true }.start()
-        }
+        BedtimeWorker.enqueue(context)
     }
 }

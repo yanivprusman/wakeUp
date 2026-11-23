@@ -148,28 +148,46 @@ object VoiceCache {
         }.getOrDefault(false).also { end(alarm.id) }
     }
 
-    /** Fire-and-forget refresh, for the UI thread. */
-    fun refresh(context: Context, alarm: Alarm, onDone: (Boolean) -> Unit = {}) {
-        // Marked as fetching HERE, on the caller's thread, before the thread starts — so a
+    /**
+     * Get [alarm]'s briefing onto the phone, retrying until it lands — see [BriefingWorker].
+     * [replace]: the content changed, so a request already queued is for the old content.
+     */
+    fun refresh(context: Context, alarm: Alarm, replace: Boolean) {
+        // Marked as on its way HERE, on the caller's thread, before the work is queued — so a
         // screen that just cleared the file never draws a frame of "no briefing" in between.
-        val ticket = begin(alarm.id)
-        Thread {
-            val ok = fetch(context.applicationContext, alarm, ticket)
-            onDone(ok)
-        }.apply { isDaemon = true }.start()
+        synchronized(lock) {
+            queued.add(alarm.id)
+            publishFetching()
+        }
+        BriefingWorker.enqueue(context.applicationContext, alarm.id, replace)
     }
+
+    /** The queued download for [alarmId] is finished, one way or the other. */
+    fun settled(alarmId: Int) {
+        synchronized(lock) {
+            queued.remove(alarmId)
+            publishFetching()
+        }
+        _changes.update { it + 1 }
+    }
+
+    /** The briefing on disk is for the morning [alarm] will next ring. */
+    fun isCurrent(context: Context, alarm: Alarm): Boolean =
+        renderedFor(context, alarm.id) == alarm.nextTrigger()
 
     private fun atFile(context: Context, alarmId: Int) = File(context.filesDir, "wake-voice-$alarmId.at")
 
     private val lock = Any()
     private val generation = HashMap<Int, Long>()
     private val inFlight = HashMap<Int, Int>()
+    /** Ids with a [BriefingWorker] queued or retrying — "on its way" even between attempts. */
+    private val queued = HashSet<Int>()
     private val _fetching = MutableStateFlow<Set<Int>>(emptySet())
     private val _changes = MutableStateFlow(0L)
 
     private fun begin(alarmId: Int): Long = synchronized(lock) {
         inFlight[alarmId] = (inFlight[alarmId] ?: 0) + 1
-        _fetching.value = inFlight.keys.toSet()
+        publishFetching()
         ((generation[alarmId] ?: 0) + 1).also { generation[alarmId] = it }
     }
 
@@ -177,9 +195,14 @@ object VoiceCache {
         synchronized(lock) {
             val left = (inFlight[alarmId] ?: 1) - 1
             if (left <= 0) inFlight.remove(alarmId) else inFlight[alarmId] = left
-            _fetching.value = inFlight.keys.toSet()
+            publishFetching()
         }
         _changes.update { it + 1 }
+    }
+
+    /** Call holding [lock]. */
+    private fun publishFetching() {
+        _fetching.value = inFlight.keys + queued
     }
 
     private const val TAG = "VoiceCache"

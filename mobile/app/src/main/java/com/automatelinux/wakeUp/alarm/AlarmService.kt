@@ -159,7 +159,7 @@ class AlarmService : Service() {
         // cost you tomorrow's briefing (and, online, showed "No briefing" while it re-rendered).
         if (VoiceCache.renderedFor(this, alarm.id) == alarm.nextTrigger()) return
         VoiceCache.clear(this, alarm.id)
-        VoiceCache.refresh(applicationContext, alarm)
+        VoiceCache.refresh(applicationContext, alarm, replace = true)
     }
 
     private fun snooze(id: Int) {
