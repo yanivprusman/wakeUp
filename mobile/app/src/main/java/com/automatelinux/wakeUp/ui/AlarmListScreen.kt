@@ -597,33 +597,6 @@ private fun ChallengePill(label: String, selected: Boolean, modifier: Modifier, 
     }
 }
 
-/**
- * The app's own time picker.
- *
- * The platform `TimePickerDialog` renders in the OS's holo-era green regardless of the app's
- * theme — a teal clock face dropped into a night-indigo app, which is what it looked like.
- * Material 3's [TimePicker] inherits the scheme above, so it belongs to this app.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WakeTimeDialog(
-    title: String,
-    initialHour: Int,
-    initialMinute: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (Int, Int) -> Unit,
-) {
-    val state = rememberTimePickerState(initialHour = initialHour, initialMinute = initialMinute, is24Hour = true)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        title = { Text(title) },
-        text = { TimePicker(state = state) },
-        confirmButton = { TextButton(onClick = { onConfirm(state.hour, state.minute) }) { Text("Set") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
 private fun openFix(context: Context, fix: Fix) {
     val intent = when (fix) {
         Fix.EXACT_ALARMS ->
