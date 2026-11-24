@@ -50,12 +50,14 @@ class AlarmService : Service() {
                 val justRang = currentAlarmId
                 stopEverything()
                 renderNextBriefing(justRang)
-                stopSelf()
+                // Say the choice once the ring is silent; the service lives until it is said.
+                ChoiceVoice.say(this, "Stop") { stopSelf(startId) }
             }
             ACTION_SNOOZE -> {
                 val id = intent.getIntExtra(AlarmReceiver.EXTRA_ID, -1)
                 snooze(id)
-                stopEverything(); stopSelf()
+                stopEverything()
+                ChoiceVoice.say(this, "Snooze, five minutes") { stopSelf(startId) }
             }
             else -> stopSelf()
         }
