@@ -144,8 +144,11 @@ private fun TypedTime(
                 value = hour, max = 23, focus = hourFocus, dataId = "wake-time-hour",
                 imeAction = ImeAction.Next,
                 onChange = { v ->
+                    // Only typing moves on — selecting the old digits on focus is a change too,
+                    // and advancing on that skipped the hours the moment they were tapped.
+                    val typed = v.text != hour.text
                     onHour(v)
-                    if (v.text.length == 2) minuteFocus.requestFocus()
+                    if (typed && v.text.length == 2) minuteFocus.requestFocus()
                 },
             )
             Text(":", fontSize = 57.sp, modifier = Modifier.padding(horizontal = 8.dp))
