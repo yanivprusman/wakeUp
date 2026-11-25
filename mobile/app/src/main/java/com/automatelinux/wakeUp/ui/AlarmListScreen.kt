@@ -319,7 +319,7 @@ private fun Header(next: Alarm?) {
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    atText + (if (next.snoozed) " · snoozed" else "") + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                    atText + (if (next.snoozed) " · snooze of %02d:%02d".format(next.hour, next.minute) else "") + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -393,7 +393,12 @@ private fun AlarmCard(
         shape = RoundedCornerShape(24.dp),
     ) {
         // A disabled alarm is still on the list, but it must never read as armed at a glance.
-        Column(Modifier.padding(20.dp).alpha(if (alarm.enabled) 1f else 0.45f)) {
+        // A snoozed one IS armed — even a one-shot that switched itself off when it rang — so
+        // the card owns its snooze: lit, switched on, and saying when it rings. Shown only in
+        // the header, the snooze read as an alarm of its own with nothing under it.
+        val snoozeAt = alarm.snoozedUntil.takeIf { alarm.snoozed }
+        val armed = alarm.enabled || snoozeAt != null
+        Column(Modifier.padding(20.dp).alpha(if (armed) 1f else 0.45f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // The clock opens the picker. The pencil is there because an invisible tap
                 // target is the same problem as no tap target: the time sat here unchangeable
@@ -410,7 +415,7 @@ private fun AlarmCard(
                         "%02d:%02d".format(alarm.hour, alarm.minute),
                         fontSize = 52.sp,
                         fontWeight = FontWeight.Light,
-                        color = if (alarm.enabled) MaterialTheme.colorScheme.onSurface
+                        color = if (armed) MaterialTheme.colorScheme.onSurface
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.width(10.dp))
@@ -422,7 +427,8 @@ private fun AlarmCard(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                Switch(checked = alarm.enabled, onCheckedChange = onToggle)
+                // Off while snoozed calls the snooze off too (see onToggle).
+                Switch(checked = armed, onCheckedChange = onToggle)
             }
 
             Text(
@@ -430,6 +436,16 @@ private fun AlarmCard(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline,
             )
+            if (snoozeAt != null) {
+                val c = Calendar.getInstance().apply { timeInMillis = snoozeAt }
+                Text(
+                    "Snoozed — rings again at %02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
 
             Spacer(Modifier.height(12.dp))
             NameField(name = alarm.label, onType = onType, onSettled = onSettled)
