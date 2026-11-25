@@ -132,7 +132,7 @@ fun AlarmListScreen() {
         refresh()
     }
 
-    val next = alarms.filter { it.enabled }.minByOrNull { it.nextTrigger() }
+    val next = alarms.filter { it.armedAt() != null }.minByOrNull { it.armedAt()!! }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -181,7 +181,8 @@ fun AlarmListScreen() {
                     alarm = alarm,
                     voiceState = diskVersion.let { VoiceCache.state(context, alarm.id) },   // re-read on every disk change
                     caching = alarm.id in caching,
-                    onToggle = { on -> rearm(alarm, alarm.copy(enabled = on)) },
+                    // Switching it off also calls off a pending snooze — off means silent.
+                    onToggle = { on -> rearm(alarm, alarm.copy(enabled = on, snoozedUntil = if (on) alarm.snoozedUntil else 0L)) },
                     onDelete = {
                         AlarmScheduler.cancel(context, alarm)
                         VoiceCache.clear(context, alarm.id)
@@ -247,7 +248,7 @@ fun AlarmListScreen() {
                     // the alarm is off, which is the case a separate cancel would get wrong.
                     // Choosing a wake time is asking to be woken at it: an alarm that was off
                     // comes back on, or the picker would hand back a time that never rings.
-                    rearm(existing, existing.copy(hour = h, minute = m, enabled = true))
+                    rearm(existing, existing.copy(hour = h, minute = m, enabled = true, snoozedUntil = 0L))
                 }
             },
         )
@@ -291,7 +292,10 @@ private fun Header(next: Alarm?) {
         if (next == null) {
             Text("No alarm armed", fontSize = 30.sp, fontWeight = FontWeight.Light)
         } else {
-            val remaining = (next.nextTrigger() - now).coerceAtLeast(0L)
+            val at = next.armedAt(now) ?: next.nextTrigger(now)
+            val atCal = Calendar.getInstance().apply { timeInMillis = at }
+            val atText = "%02d:%02d".format(atCal.get(Calendar.HOUR_OF_DAY), atCal.get(Calendar.MINUTE))
+            val remaining = (at - now).coerceAtLeast(0L)
             if (sheep) {
                 val seconds = remaining / 1000
                 Text(
@@ -301,7 +305,7 @@ private fun Header(next: Alarm?) {
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    "sheep, one a second, until %02d:%02d".format(next.hour, next.minute),
+                    "sheep, one a second, until $atText",
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -315,7 +319,7 @@ private fun Header(next: Alarm?) {
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    "%02d:%02d".format(next.hour, next.minute) + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                    atText + (if (next.snoozed) " · snoozed" else "") + (next.label.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

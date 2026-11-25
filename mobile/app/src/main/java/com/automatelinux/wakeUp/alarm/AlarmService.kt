@@ -164,19 +164,12 @@ class AlarmService : Service() {
         VoiceCache.refresh(applicationContext, alarm, replace = true)
     }
 
+    /** Saved first, then armed from the store — so every later re-arm keeps it. */
     private fun snooze(id: Int) {
-        val alarm = AlarmStore.get(this, id) ?: return
-        val at = System.currentTimeMillis() + SNOOZE_MS
-        val am = getSystemService(android.app.AlarmManager::class.java) ?: return
-        val i = Intent(this, AlarmReceiver::class.java).apply {
-            action = AlarmReceiver.ACTION_FIRE
-            putExtra(AlarmReceiver.EXTRA_ID, alarm.id)
-            data = android.net.Uri.parse("wakeup://alarm/${alarm.id}")
-        }
-        val pi = PendingIntent.getBroadcast(
-            this, alarm.id, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        am.setAlarmClock(android.app.AlarmManager.AlarmClockInfo(at, pi), pi)
+        val alarm = AlarmStore.get(this, id) ?: run { Log.e(TAG, "snooze: alarm $id not in the store"); return }
+        val snoozed = alarm.copy(snoozedUntil = System.currentTimeMillis() + SNOOZE_MS)
+        AlarmStore.upsert(this, snoozed)
+        AlarmScheduler.schedule(this, snoozed)
     }
 
     private fun stopEverything() {

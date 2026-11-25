@@ -26,10 +26,11 @@ class AlarmReceiver : BroadcastReceiver() {
         else context.startService(svc)
 
         // A repeating alarm re-arms itself for next week; a one-shot switches itself off so the
-        // list tells the truth in the morning.
+        // list tells the truth in the morning. Either way a snooze that just rang is spent.
         AlarmStore.get(context, id)?.let { alarm ->
-            if (alarm.repeats) AlarmScheduler.schedule(context, alarm)
-            else AlarmStore.upsert(context, alarm.copy(enabled = false))
+            val after = alarm.copy(snoozedUntil = 0L, enabled = alarm.enabled && alarm.repeats)
+            AlarmStore.upsert(context, after)
+            AlarmScheduler.schedule(context, after)
         }
     }
 

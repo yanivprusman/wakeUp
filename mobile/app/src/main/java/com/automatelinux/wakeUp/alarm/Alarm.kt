@@ -47,8 +47,29 @@ data class Alarm(
     val flash: Boolean = true,
     /** Play Claude's cached briefing over the tone. See [VoiceCache]. */
     val voice: Boolean = true,
+    /**
+     * Epoch-millis a snooze will ring this alarm again, or 0. Kept in the store, not only in
+     * AlarmManager: the snooze shares the alarm's PendingIntent, and every re-arm from the
+     * store (opening the app, a boot, an update) used to see a spent one-shot — switched off
+     * when it fired — and cancel that intent, snooze and all. 2026-11-25: snoozed at 05:00,
+     * opened the app, never rang again.
+     */
+    val snoozedUntil: Long = 0L,
 ) {
     val repeats: Boolean get() = days.isNotEmpty()
+
+    /**
+     * When this alarm will actually ring next, or null when nothing is armed: a pending
+     * snooze first (it rings even on a one-shot that has already switched itself off), then
+     * the regular time if the alarm is on.
+     */
+    fun armedAt(now: Long = System.currentTimeMillis()): Long? = when {
+        snoozedUntil > now -> snoozedUntil
+        enabled -> nextTrigger(now)
+        else -> null
+    }
+
+    val snoozed: Boolean get() = snoozedUntil > System.currentTimeMillis()
 
     /** Next epoch-millis this alarm should fire, strictly in the future. */
     fun nextTrigger(now: Long = System.currentTimeMillis()): Long {
@@ -77,6 +98,7 @@ data class Alarm(
         put("enabled", enabled); put("label", label)
         put("challenge", challenge.name); put("requiredCorrect", requiredCorrect)
         put("vibrate", vibrate); put("flash", flash); put("voice", voice)
+        put("snoozedUntil", snoozedUntil)
     }
 
     companion object {
@@ -96,6 +118,7 @@ data class Alarm(
                 vibrate = o.optBoolean("vibrate", true),
                 flash = o.optBoolean("flash", true),
                 voice = o.optBoolean("voice", true),
+                snoozedUntil = o.optLong("snoozedUntil", 0L),
             )
         }
     }

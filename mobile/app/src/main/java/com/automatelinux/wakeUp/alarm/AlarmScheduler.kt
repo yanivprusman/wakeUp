@@ -43,16 +43,15 @@ object AlarmScheduler {
 
     fun schedule(context: Context, alarm: Alarm) {
         val am = context.getSystemService(AlarmManager::class.java) ?: return
-        if (!alarm.enabled) { cancel(context, alarm); return }
+        val at = alarm.armedAt() ?: run { cancel(context, alarm); return }
         if (!canScheduleExact(context)) {
             // Loud on purpose: a silently downgraded alarm is the failure this app exists to
             // prevent. The UI surfaces the same condition as a banner.
             Log.e(TAG, "exact alarms not permitted — alarm ${alarm.id} NOT scheduled")
             return
         }
-        val at = alarm.nextTrigger()
         am.setAlarmClock(AlarmManager.AlarmClockInfo(at, showIntent(context)), fireIntent(context, alarm))
-        Log.i(TAG, "alarm ${alarm.id} set for $at")
+        Log.i(TAG, "alarm ${alarm.id} set for $at" + if (alarm.snoozed) " (snoozed)" else "")
     }
 
     fun cancel(context: Context, alarm: Alarm) {
@@ -61,7 +60,7 @@ object AlarmScheduler {
 
     /** After a boot, a time change, or any edit: make the system agree with the store. */
     fun rescheduleAll(context: Context) {
-        AlarmStore.all(context).forEach { if (it.enabled) schedule(context, it) else cancel(context, it) }
+        AlarmStore.all(context).forEach { schedule(context, it) }   // schedule() cancels what is not armed
     }
 
     fun canScheduleExact(context: Context): Boolean =
